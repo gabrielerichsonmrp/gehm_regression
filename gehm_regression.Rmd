@@ -1,6 +1,6 @@
 ---
-title: "King County House Prediction"
-subtitle: "House Prediction using Multiple Linear Regression"
+title: "King County: House Prices Prediction"
+subtitle: "House Prices Prediction using Multiple Linear Regression"
 author: "by Gabriel Erichson"
 output: 
   html_document:
@@ -16,6 +16,9 @@ output:
     css: style.css
   pdf_document: default
 ---
+  
+Github: https://github.com/gabrielerichsonmrp/gehm_regression
+
   
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
