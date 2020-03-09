@@ -1,0 +1,618 @@
+---
+title: "King County House Prediction"
+subtitle: "House Prediction using Multiple Linear Regression"
+author: "by Gabriel Erichson"
+output: 
+  html_document:
+    df_print: paged
+    code_folding: hide
+    toc: true
+    toc_depth: 3
+    toc_float: 
+      collapsed: true
+    number_sections: true
+    theme: sandstone
+    highlight: haddock
+    css: style.css
+  pdf_document: default
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	fig.align = "center",
+	message = FALSE,
+	warning = FALSE,
+	comment = "#>",
+	result = "hide"
+)
+options(scipen = 99999999)
+source("R/g_regression.R")
+library(tidyverse)
+library(dplyr)
+library(GGally)
+library(lubridate)
+library(paletti)
+library(gridExtra)
+library(grid)
+library(MLmetrics)
+library(car)
+library(lmtest)
+library(scales)
+library(nortest)
+
+
+# WARNA
+mycolor = c(
+  dark_blue="#003f5c", 
+  light_blue="#2f4b7c", 
+  light_purple ="#665191",
+  dark_pink="#a05195", 
+  light_pink="#d45087", 
+  light_red="#f95d6a", 
+  dark_orange="#ff6347",
+  light_orange="#ff7c43",
+  semi_orange="#e79658",
+  orange="#dda15a",
+  cream="#b59378",
+  dark_cream="#A57F5F",
+  choc="#85664B",
+  dark_choc="#6b5340"
+)
+
+mycolorfill = c(
+  
+  light_blue="#2f4b7c", 
+  light_purple ="#665191",
+  dark_pink="#a05195", 
+  light_pink="#d45087", 
+  light_red="#f95d6a", 
+  dark_orange="#ff6347",
+  
+  semi_orange="#e79658",
+  orange="#dda15a",
+  cream="#b59378",
+  dark_cream="#A57F5F",
+  choc="#85664B",
+  dark_choc="#6b5340",
+  light_orange="#ff7c43"
+)
+
+
+viz_palette(mycolor)
+mycolor_fill  <- get_scale_fill(get_pal(mycolorfill))
+mycolor_color <- get_scale_color(get_pal(mycolor))
+mycolor_hex <- get_hex(mycolor)
+
+```
+
+# Intro
+
+Tujuan dari project ini adalah untuk memprediksi penjualan rumah di King County, Washington, AS menggunakan metode Linear Regression. Dataset terdiri dari data historis rumah yang dijual antara Mei 2014 hingga Mei 2015.
+
+
+# Data Preparation
+
+## Read Data
+
+Data yang digunakan dapat didownload dari [KC_Housesales_Data](https://www.kaggle.com/swathiachath/kc-housesales-data)
+
+```{r}
+house <- read.csv("data_input/kc_house_data.csv")
+```
+
+## Data Structure
+
+```{r}
+glimpse(house)
+```
+
+
+Berdasarkan data diatas, dataset yang digunakan memiliki 500.000 observasi dan 15 variabel. Selain itu, Struktur data yang kita miliki sudah sesuai dengan kebutuhan.
+
+
+## Remove Variable
+
+Dari struktur data diatas terdapat data **id** dan **date**. Variabel id tidak memberi informasi yang cukup penting sehingga dapat diremove. kemudian untuk modelling kali ini kita tidak mempertimbangkan tahun penjualan karena data diambil dari Mei 2014 hingga Mei 2015 sehingga perubahan yang terjadi tidak signifikan.
+
+```{r}
+house <- house %>% 
+  select(-id,-date) 
+```
+
+## Missing Values
+Tidak ada missing value pada dataset ini.
+
+```{r}
+colSums(is.na(house))
+```
+
+
+# Data Inspection
+
+## 10 Top Line Data
+
+```{r}
+head(house,10)
+```
+
+
+<br>
+
+## 10 Bottom Line Data 
+
+```{r}
+tail(house,10)
+```
+
+
+<br>
+
+## Deskrpisi Variabel
+
+Pada data yang hanya bernilai **1** dan **0** menandakan **1 = "Iya" dan 0 = "Tidak"**
+
+<table class="table table-condensed">
+  <tr>
+    <th>Area</th>
+    <th>Area rumah</th>
+  </tr>
+  <tr>
+    <td>Garage</td>
+    <td>Jumlah Garasi</td>
+  </tr>
+   <tr>
+    <td>FirePlace</td>
+    <td>Jumlah Perapin</td>
+  </tr>
+   <tr>
+    <td>Baths</td>
+    <td>Jumlah Kamar Mandi</td>
+  </tr>
+   <tr>
+    <td>White.Marble</td>
+    <td>Apakah menggunkan keramik "White Marble"</td>
+  </tr>
+   <tr>
+    <td>Black.Marble</td>
+    <td>Apakah menggunakan keramik "Black Marble"</td>
+  </tr>
+   <tr>
+    <td>Floors</td>
+    <td>Apakah lantai sudah diflooring</td>
+  </tr>
+  <tr>
+    <td>City</td>
+    <td>Lokasi Kota dari rumah</td>
+  </tr>
+  <tr>
+    <td>Solar</td>
+    <td>Apakah terdapat tenaga surya</tr>
+  </tr>
+  <tr>
+    <td>Electric</td>
+    <td>Apakah terdapat listrik</td>
+  </tr>
+  <tr>
+    <td>Fiber</td>
+    <td>Apakah menggunakan Fiber</td>
+  </tr>
+  <tr>
+    <td>Glass.Doors</td>
+    <td>Apakah menggunakan pintu kaca</td>
+  </tr>
+  <tr>
+    <td>Swiming.Pool</td>
+    <td>Apakah terdapat kolam renang</td>
+  </tr>
+  <tr>
+    <td>Garden</td>
+    <td>Apakah terdapat taman</td>
+  </tr>
+  <tr>
+    <td>Prices</td>
+    <td>Harga rumah. variabel yang akan diprediksi dalam analisis ini.</td>
+  </tr>
+</table>
+
+<br>
+
+
+## Data Summary
+
+```{r}
+summary(house)
+```
+
+
+<br>
+
+***
+
+# EDA
+## Correlation Matrix of Input Data
+
+```{r, warning=F,fig.asp=0.8, fig.width=10}
+ggcorr(house,label = T, size=3, label_size = 3, hjust=0.95)+
+  labs(
+    title="Correlation Matrix of Input Data"
+  )+
+  theme_minimal()+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title=element_text(size=8,face="bold"), 
+    axis.text.y=element_blank()
+  )
+
+```
+
+
+Berdasarkan matriks korelasi dari data input diatas, setiap variabel mempunyai pengaruh terhadap *Price* kecuali *condition* dan *longitude*. Kemudian variabel yang memiliki korelasi paling tinggi dengan Price adalah *sqft_living* dan *grade*.
+
+
+## Outlier of Price
+
+
+```{r}
+# length(boxplot(house$price)$out)
+#house <- house %>% filter(!Prices %in% bx.plot.outlier)
+
+ggplot(house, aes(x=price)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white")+
+ geom_density(alpha=.2, fill="#FF6666")+
+  labs(
+    title="Price Distribution exclude Outlier"
+  )+
+  theme_minimal()+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title=element_text(size=9,face="bold"), 
+    axis.text.y=element_text(margin = margin(l=5)),
+    axis.text.x.bottom = element_text(margin = margin(b=5))
+  )+
+  mycolor_fill()
+
+```
+
+
+Jika dilihat terdapat cukup banyak data yang memiliki harga yang jauh lebih tinggi dari data lainnya sehingga menyebabkan distribusi penyebaran harga rumah tidak normal. Sehinga saya memutuskan untuk membuang data dengan harga yang lebih dari USD 200 juta karena jika dilihat dari chart distribusi diatas untuk data yang memiliki harga diatas USD 200 juta sangat sedikit. berikut hasilnya:
+
+
+```{r}
+house_clean <- house %>% 
+  filter(price < 2000000)
+
+ggplot(house_clean, aes(x=price)) + 
+ geom_histogram(aes(y=..density..), colour="black", fill="white",binwidth = 50000)+
+ geom_density(alpha=.2, fill="#FF6666")+
+   scale_x_continuous(name = "Price",
+                     labels = dollar)+
+  labs(
+    title="Price Distribution < USD 200 Millions"
+  )+
+  theme_minimal()+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title=element_text(size=9,face="bold"), 
+    axis.text.y=element_text(margin = margin(l=5)),
+    axis.text.x.bottom = element_text(margin = margin(b=5))
+  )+
+  mycolor_fill()
+
+```
+
+
+
+<br>
+
+***
+
+# Split Train vs Test
+
+Saya membagi data train:test dengan proporso 80:20
+
+```{r}
+# Train vs Test
+set.seed(999)
+idx_house <- sample(x=nrow(house_clean),size=nrow(house)*0.7)
+
+house_train <- house_clean[idx_house,]
+house_test <- house_clean[-idx_house,]
+
+```
+
+
+
+<br>
+
+***
+
+
+# Modelling: Linear Regression {.tabset .tabset-fade .tabset-pills}
+
+Modelling menggunakan metode regresi Linear ini dilakukan untuk memprediksi harga dari suatu rumah (**Prices**).
+
+## Single Predictor
+
+Berdasarkan matriks korelasi sebelumnya, variabel *sqft_living* dan *grade* memiliki korelasi paling kuat dengan variabel **Price**. Mari kita coba:
+
+**Linear Regression with single predictor: sqft_living**
+
+```{r}
+lm_house_single_living <- lm(price~sqft_living,house_train)
+summary(lm_house_single_living)
+
+```
+
+
+Jika dilihat berdasarkan P-Value variabel **sqft_living** sangat berpengaruh terhadap harga. Namun, jika sebagai single predictor, model ini hanya memiliki nilai **Adjusted R-squared:  0.4615** yang berarti hanya berhasil menangkap variansi dari target sebesar **46%**
+
+
+**Linear Regression with single predictor: grade**
+
+```{r}
+lm_house_single_grade <- lm(price~grade,house_train)
+summary(lm_house_single_grade)
+```
+
+
+Jika dilihat berdasarkan P-Value variabel **grade** sangat berpengaruh terhadap harga. Namun, jika sebagai single predictor, model ini hanya memiliki nilai **Adjusted R-squared:  0.4615** yang berarti hanya berhasil menangkap variansi dari target sebesar **46%**. 
+
+***Kesimpulan:***
+Model Linear Regression menggunakan single predictor tidak cocok diterapkan untuk menentukan harga rumah pada dataset ini.
+
+
+
+<br>
+
+
+***
+
+
+## Multiple Predictor
+
+```{r}
+
+# Multiple Linear Regression
+lm_house_all <- lm(price~., data=house_train)
+summary(lm_house_all)
+```
+
+Hasil summary dari model **lm_house_all** memberikan banyak informasi. nilai `Estimate` menginterpretasikan nilai setiap koefisien, misalnya apabila rumah memiliki *waterfront* maka akan berkontribusi pada kenaikan harga rumah sebesar **USD 276282.06**. Tapi kalau dilihat yang aneh pada variabel **bedrooms**, jika jumlah kamar bertambah 1 maka harga rumah berkuran sebesar **USD -15545.64**, apakah didaerah sana orang gak suka kamar banyak? :)
+
+Mari melihat nilai dari `Pr(>|t|)`, nilai ini menunjukan seberapa besar suatu variabel berpengaruh untuk memprediksi **Prices**. jika nilainya `Pr(>|t|)` dibawah 0.05 maka dapat diasumsikan bahwa variabel memiliki pengaruh signifikan dan sebaliknya. Berdasarkan summary model diatas, variabel *sqft_above* dan *sqft_basement* memilki nilai P Value > 0.05 bahkan NA Value, sehingga variabel ini dapat di exclude dari prediktor. Namun saya masih kurang mengerti untuk mendektsi singularitas pada variabel *sqft_basement*, next saya update terkait ini.
+
+Selain itu, jika dilihat nilai **Adjusted R-squared:0.7134 **, hal ini menandakan bahwa model lm_house_all dapat memprediksi 71.3%. Angka yang belum cukup bagus, tapi coba kita selesaikan.
+
+
+<br>
+
+
+***
+
+
+## Stepwise Method
+
+```{r}
+step_backward <- step(
+  lm_house_all,
+  direction = "backward"
+  )
+
+summary(step_backward)
+```
+
+Metode Stepwise akan menyeleksi variabel-variabel yang memilki pengaruh signifikan terhadap prediktor. Lihat bagian **Step:  AIC=360919.5**, semakin kecil nilai AIC, maka semakin disarankan variabel prediktor yang dipilih dan nilai AIC paling kecil berada dibagian paling bawah tampilan. Berdasarkan hasil stepwise backward, formula untuk Multiple Linear Regression yang disarankan:
+
+
+
+<br>
+
+
+***
+
+
+
+# Model Evaluation {.tabset .tabset-fade .tabset-pills}
+
+Berdasarkan hasil stepwise backward, formula untuk Multiple Linear Regression yang disarankan:
+
+**Formula:**<br>
+**lm(price ~ bedrooms + bathrooms + sqft_living + sqft_lot + floors + waterfront + view + condition + grade + sqft_above + yr_built + yr_renovated + zipcode + lat + long + sqft_living15 + sqft_lot15, data=house_train)**
+
+```{r}
+lm_house_model <- lm(price ~ bedrooms + bathrooms + sqft_living + sqft_lot + floors + waterfront + view + condition + grade + sqft_above + yr_built + yr_renovated + zipcode + lat + long + sqft_living15 + sqft_lot15, data=house_train)
+
+```
+
+## Model Performance: Error
+
+Cara evaluasi model di kasus regresi dapat menggunakan beberapa matriks penilaian, antara lain:
+
+**R-squared & Adjusted R-squared**<br>
+  * Model yang dibuat menggunakan multiple predictor sehingga nilai yang baik diinterpretasikan adalah  nilai **Adjusted R-squared**. model ini memiliki nilai **Adjusted R-squared : 0.7134 **, hal ini menandakan bahwa model lm_house_all dapat memprediksi 71.3%. Angka yang belum cukup bagus, akan dicoba lagi menggunakan metode lain dikesempatan berikutnya.
+
+
+**Error**<br>
+  * Mean Absolute Error (MAE): Paling mudah untuk di interpretasikan karena dibandingkan dengan satuan data aktual.<br>
+  * Mean Absolute Percentage Error (MAPE): Punya interval untuk seberapa baik model kita. (0 sd 100%). NamuN MAPE terdapat batasan, apabila pada data aktual memiliki nilai 0, MAPE akan inf. <br>
+  * Root Mean Square Error (RMSE): Baik digunakan untuk data2 yang nilai fluktuatif.
+
+
+Berikut pengujian error model ini:
+
+```{r, warning=FALSE}
+MAE <-  MAE(
+    y_pred = predict(lm_house_all,house_test),
+    y_true =  house_test$price
+  )
+
+MAPE <- MAPE(
+    y_pred = predict(lm_house_all,house_test),
+    y_true =  house_test$price
+  )
+
+RMSE <- RMSE(
+    y_pred = predict(lm_house_all,house_test),
+    y_true =  house_test$price
+  )
+
+data.frame("MAE"=MAE,"MAPE"=MAPE, "RMSE"=RMSE)
+
+```
+
+Hasil pengujian error menggunakan 3 metode diatas menunjukan nilainya **kurang cukup** baik, dimana semakin kecil nilai error maka semakin baik model yang dibuat. Jika berdasarkan nilai MAE, maka model ini memiliki error kurang lebih sekitar **USD 106.946**.
+
+
+<br>
+
+
+***
+
+
+## Assumption Checking
+
+**1. Linearity**
+```{r}
+
+linearity <- data.frame(residual = lm_house_model$residuals, fitted = house_train$price)
+linearity %>% 
+  ggplot(aes(fitted, residual)) + 
+  geom_point() + 
+  geom_smooth(method = lm) + 
+  geom_hline(aes(yintercept = 0)) + 
+     theme_minimal()+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title=element_text(size=9,face="bold"), 
+    axis.text.y=element_text(margin = margin(l=5)),
+    axis.text.x.bottom = element_text(margin = margin(b=5))
+  )+
+  mycolor_color()
+
+```
+
+Berdasarkan pengujian linearity terlihat bahwa model yang dibuat belum berhasil menangkap variansi data dengan baik, terlihat error atau jarak data dari mean cukup jauh.
+
+
+
+<br>
+
+
+**2. Normality Residual**
+
+```{r}
+hist(lm_house_model$residuals)
+
+#shapiro test
+shapiro.test(lm_house_model$residuals[0:5000])
+
+# Anderson-Darling normality test
+nortest::ad.test(lm_house_model$residuals)
+
+```
+
+*Hipotesis:*<br>
+- H0: Residual berdistribusi normal<br>
+- H1: Residual tidak berdistribusi normal
+
+*Kesimpulan*
+Karena nilai p-value: 0.00000000000000022 < 0.05 maka keputusannya adalah terima H1, dengan kesimpulan residual dari model tidak berdistribusi normal.
+
+
+<br>
+
+
+**3. No-Heteroscedasticity**
+```{r}
+lmtest::bptest(lm_house_model)
+
+
+linearity <- data.frame(residual = lm_house_model$residuals, fitted = house_train$price)
+linearity %>% 
+  ggplot(aes(fitted, residual)) + 
+  geom_point() + 
+  geom_smooth(method = "h") + 
+  geom_hline(aes(yintercept = 0)) + 
+     theme_minimal()+
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    axis.title=element_text(size=9,face="bold"), 
+    axis.text.y=element_text(margin = margin(l=5)),
+    axis.text.x.bottom = element_text(margin = margin(b=5))
+  )+
+  mycolor_color()
+
+```
+
+
+*Hipotesis:*<br>  
+- H0: Data residual Homogen (tidak membentuk sebuah pola) <br>
+- H1: Data residual heteros (membentuk sebuah pola) <br>
+
+*Kesimpulan*<br>
+Karena nilai p-value: 0.00000000000000022 < 0.05 maka keputusannya adalah terima H1, dengan kesimpulan residual dari model bersifat heteros, dapat dilihat membentuk sebuah pola.
+
+
+<br>
+
+**4. No-Multicollinearity**
+
+Tidak terdapat Multicollinearity dari variabel yang digunakan pada model.
+```{r}
+car::vif(lm_house_model)
+```
+
+
+
+***
+
+<br>
+
+# Predict to Data Test
+
+Berikut data hasil prediksi Price terhadap data test.<br>
+`price`  :  Harga asli <br>
+`predict.fit`  : hasil prediksi fit value <br>
+`predict.lower`  : hasil prediksi prekiraan harga terendah <br>
+`predict.upper`  : hasil prediksi perkiraan harga tertinggi <br>
+
+
+```{r}
+predict_price <-  predict(
+  lm_house_model,
+  house_test,
+  interval = "confidence",
+  level = 0.95
+)
+
+house_predict <- cbind(house_test,predict_price)
+
+house_predict %>% 
+  select(
+  price, predict.fit=fit, predict.lower=lwr, predict.upper=upr, bedrooms, bathrooms, sqft_living, sqft_lot, floors, waterfront, view, condition, grade, sqft_above, yr_built, yr_renovated, zipcode, lat, long, sqft_living15, sqft_lot15)
+
+```
+
+
+<br>
+
+***
+
+# Summary
+
+Model ini memiliki nilai **Adjusted R-squared : 0.7134 **, hal ini menandakan bahwa model lm_house_all dapat memprediksi **71.3%**. Kemudian Hasil pengujian error menggunakan metode MAE menunjukan error kurang lebih sekitar **USD 106.946**. Pada pengujian asumsi, model ini hanya berhasil melewati pengujian Multicollinearity sedangkan pada gagal dalam pengujian Linearity, Normality dan Heteroscedasticity. Kesimpulannya, model ini masih kurang baik jika hendak digunakan untuk memprediksi harga rumah terkait dataset ini. Saya akan coba melakukan tunning atau menggunakan metode lainnya di kesempatan selanjutnya.
+
+
+<br>
+
+***
+
+# Reference
+
+1. [KC_Housesales_Data](https://www.kaggle.com/swathiachath/kc-housesales-data)<br>
+2. [World Happiness Report 2019](https://rpubs.com/nabiilahardini/happiness)<br>
+3. [Linear Regression on Car Price Prediction](https://rpubs.com/Argaadya/531140)<br>
+4. [King County House Sales_MLR](https://www.kaggle.com/swathiachath/king-county-house-sales-mlr)<br>
+5. [PricePrediction Linear Regression & Random Forest](https://www.kaggle.com/raghavbang/priceprediction-linear-regression-random-forest)<br>
+
